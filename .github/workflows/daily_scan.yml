@@ -1,0 +1,63 @@
+# 毎営業日 18:30 JST に監視ジョブを実行し、data/（state.json / events.json / charts）をコミットする
+# 月曜は週次スキャン（新規銘柄の追加）も行う。イベントがあった日だけ Discord に通知する
+name: daily-scan
+
+on:
+  schedule:
+    - cron: "30 9 * * 1-5"   # 09:30 UTC = 18:30 JST（平日）。cron は数分〜数十分遅れうる
+  workflow_dispatch:
+    inputs:
+      scan:
+        description: "週次スキャンを強制する（true / false）"
+        default: "false"
+
+permissions:
+  contents: write            # data/ をコミットするため（コードには触らない）
+
+concurrency:
+  group: daily-scan
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Tokyo
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 依存をインストール
+        run: pip install -r requirements.txt
+
+      - name: 自己テスト（合成データ。RANGE_GOOD のみ検出で合格）
+        run: python engine/range_scanner.py --demo --no-chart
+
+      - name: 監視ジョブ（月曜は週次スキャンも。イベント日のみ Discord 通知）
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}   # Settings > Secrets に登録。コードには書かない
+        run: |
+          if [ "${{ github.event.inputs.scan }}" = "true" ]; then
+            python engine/daily_run.py --scan
+          else
+            python engine/daily_run.py
+          fi
+
+      - name: data/ の変更をコミット（ボットの記憶とイベントログ）
+        run: |
+          git config user.name "stock-bot"
+          git config user.email "stock-bot@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "data/ に変更なし"
+          else
+            git commit -m "bot: $(date +%F) の監視結果を記録（state / events / charts）"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin HEAD:"${GITHUB_REF_NAME}"
+          fi

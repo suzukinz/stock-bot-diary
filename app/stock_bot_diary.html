@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>株BOTダイアリー</title>
+<meta name="description" content="日本株のレンジ銘柄を監視し、ブレイクアウト等のイベントを日記のように蓄積する">
+<!--
+  株BOTダイアリー — ダイアリーUI 試作（Phase 0）
+  ・単一HTML、ビルド不要。GitHub Pages で配信する前提。
+  ・今はモックデータ＋「翌日へ進む」で SPEC.md §5 の状態機械を一巡させるデモ。
+  ・Phase 2 で loadData() だけを data/state.json + data/events.json の fetch に差し替える（契約: SPEC.md §4）。
+-->
+<style>
+:root{
+  --bg:#f3f4f6; --card:#ffffff; --ink:#1f2933; --muted:#6b7280; --line:#e5e7eb;
+  --amber:#f2b705; --green:#22a06b; --red:#e04f5f; --blue:#2f6fed; --navy:#1f4e79; --grey:#9ca3af;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif;font-size:14px;line-height:1.55}
+header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;letter-spacing:.02em}
+.today{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+.pill{font-size:11px;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}
+.grow{flex:1}
+button{font:inherit;border:1px solid var(--navy);background:var(--navy);color:#fff;border-radius:8px;padding:7px 12px;cursor:pointer}
+button.ghost{background:#fff;color:var(--navy)}
+button:disabled{opacity:.45;cursor:default}
+main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;padding:14px;max-width:1180px;margin:0 auto}
+@media (max-width:860px){main{grid-template-columns:1fr;padding:10px}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.panel h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.panel h2 small{color:var(--muted);font-weight:normal}
+.hint{font-size:11px;color:var(--muted);margin-top:6px}
+
+/* 注目レンジ株 */
+.stock{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;padding:10px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s;background:#fff}
+.stock:hover{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.stock.selected{border-color:var(--navy);box-shadow:0 0 0 2px rgba(31,78,121,.15)}
+.stock.archived{opacity:.55}
+.stock .head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.stock .code{font-weight:700;font-variant-numeric:tabular-nums}
+.stock .name{color:var(--muted)}
+.badge{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.badge.watching{background:#f3f4f6;color:#374151;border-color:#e5e7eb}
+.badge.near{background:#fff7d6;color:#8a5f00;border-color:#f2d98a}
+.badge.breakout{background:#e6f7ef;color:#137a4f;border-color:#a7e3c6}
+.badge.target_hit{background:#e8efff;color:#1d4ed8;border-color:#bcd0ff}
+.badge.back_below{background:#fdecef;color:#b3283a;border-color:#f6b8c1}
+.badge.dropped{background:#f3f4f6;color:#6b7280;border-color:#e5e7eb;text-decoration:line-through}
+.kv{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:4px;font-variant-numeric:tabular-nums}
+.kv b{color:var(--ink);font-weight:600}
+.spark{width:100%;height:64px;display:block}
+.wait{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* カレンダー */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-variant-numeric:tabular-nums}
+.cal .dow{text-align:center;font-size:11px;color:var(--muted);padding:2px 0}
+.cal .day{aspect-ratio:1/1;border-radius:8px;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;cursor:pointer;background:#fff}
+.cal .day.empty{border:none;background:transparent;cursor:default}
+.cal .day.weekend{background:#fafafa;color:#9ca3af}
+.cal .day.future{color:#c4c8cf;cursor:default}
+.cal .day.today{border-color:var(--navy);font-weight:700}
+.cal .day.selected{background:#eef3fa}
+.cal .dots{display:flex;gap:2px;height:6px;margin-top:2px}
+.cal .dot{width:6px;height:6px;border-radius:50%}
+.cal .quiet{width:4px;height:4px;border-radius:50%;background:#d1d5db;margin-top:3px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px}
+.legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:var(--c)}
+
+/* 通知（LINE 風に蓄積） */
+.chat{max-height:400px;overflow-y:auto;padding:8px;background:linear-gradient(#a9c5e8,#8fb1d9);border-radius:10px;display:flex;flex-direction:column;gap:8px}
+.chat .sep{align-self:center;font-size:11px;background:rgba(0,0,0,.25);color:#fff;padding:2px 10px;border-radius:999px}
+.msg{max-width:90%;background:#fff;border-radius:14px;border-top-left-radius:4px;padding:8px 10px;box-shadow:0 1px 1px rgba(0,0,0,.08);white-space:pre-wrap;word-break:break-word;font-size:13px}
+.msg .t{display:flex;gap:10px;align-items:center;margin-top:4px}
+.msg .time{font-size:10px;color:#9ca3af}
+.msg a{font-size:11px;color:var(--navy);cursor:pointer;text-decoration:underline}
+.msg.breakout{border-left:3px solid var(--green)}
+.msg.near{border-left:3px solid var(--amber)}
+.msg.dropped,.msg.back_below{border-left:3px solid var(--red)}
+.msg.target_hit{border-left:3px solid var(--blue)}
+.chat .empty{align-self:center;color:#fff;font-size:12px;padding:20px;text-align:center}
+
+/* 日記 */
+.diary-auto{background:#fafafa;border:1px dashed var(--line);border-radius:10px;padding:8px 10px;font-size:13px;margin-bottom:8px;white-space:pre-wrap}
+textarea{width:100%;min-height:96px;font:inherit;border:1px solid var(--line);border-radius:10px;padding:8px;resize:vertical}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📔 株BOTダイアリー</h1>
+  <span class="today" id="today">—</span>
+  <span class="pill">試作：モックデータ</span>
+  <span class="grow"></span>
+  <button id="btnNext">翌日へ進む ▶</button>
+  <button id="btnReset" class="ghost">最初から</button>
+</header>
+
+<main>
+  <section class="col">
+    <div class="panel">
+      <h2>注目レンジ株 <small id="watchCount"></small></h2>
+      <div id="watchlist"></div>
+      <div class="hint">黄色の箱＝登録時に凍結したレンジ／緑の破線＝IF目標（もし上抜けたら）。カードをタップすると日記に反映。</div>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="panel">
+      <h2>カレンダー <small id="calTitle"></small></h2>
+      <div class="cal" id="calendar"></div>
+      <div class="legend">
+        <span style="--c:#22a06b">ブレイク</span><span style="--c:#f2b705">接近</span><span style="--c:#2f6fed">目標到達</span>
+        <span style="--c:#e04f5f">解除／失敗</span><span style="--c:#9ca3af">監視開始・追加</span><span style="--c:#d1d5db">静かな日</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>通知 <small>イベントが起きた日だけ届く</small></h2>
+      <div class="chat" id="chat"></div>
+    </div>
+
+    <div class="panel">
+      <h2>日記 <small id="diaryDate"></small></h2>
+      <div class="diary-auto" id="diaryAuto"></div>
+      <textarea id="diaryText" placeholder="この日のメモ（この端末のブラウザにだけ保存されます）"></textarea>
+      <div class="hint">上の灰色枠はボットの自動記録、下の欄は自分の言葉。両方が揃って「日記」になる。</div>
+    </div>
+  </section>
+</main>
+<footer>予測ツールではなく「候補発見＋イベント検知＋記録」のツール。自動売買はしない。</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // ==========================================================================
+  // 1. データ層 — Phase 2 でここ（loadData）だけを data/*.json の fetch に差し替える
+  //    銘柄オブジェクトは state.json の watching[code] と同じ形、イベントは events.json と同じ形（SPEC.md §4）
+  // ==========================================================================
+  const MOCK = {
+    start: '2026-09-01',
+    days: 12,
+    stocks: [
+      { code: '7011.T', name: '三菱重工業', registered: '2026-08-28', range_high: 2850, range_low: 2515, band_pct: 12.5, range_age_at_reg: 74, if_target: 3185, last_close: 2841,
+        metrics_at_reg: { score: 61.2, pos: 91, vol_ratio: 0.78, bbw_pctile: 18, atr_ratio: 0.86 } },
+      { code: '285A.T', name: 'キオクシア', registered: '2026-08-28', range_high: 3600, range_low: 3100, band_pct: 14.9, range_age_at_reg: 58, if_target: 4100, last_close: 3180,
+        metrics_at_reg: { score: 48.7, pos: 16, vol_ratio: 0.85, bbw_pctile: 31, atr_ratio: 0.92 } },
+      { code: '6501.T', name: '日立製作所', registered: '2026-08-28', range_high: 4300, range_low: 3900, band_pct: 9.8, range_age_at_reg: 91, if_target: 4700, last_close: 4180,
+        metrics_at_reg: { score: 55.0, pos: 70, vol_ratio: 0.81, bbw_pctile: 22, atr_ratio: 0.88 } },
+      { code: '8306.T', name: '三菱UFJ FG', registered: '2026-08-28', range_high: 1950, range_low: 1750, band_pct: 10.8, range_age_at_reg: 66, if_target: 2150, last_close: 1905,
+        metrics_at_reg: { score: 52.3, pos: 78, vol_ratio: 0.90, bbw_pctile: 27, atr_ratio: 0.95 } },
+      { code: '7203.T', name: 'トヨタ自動車', registered: '2026-08-28', range_high: 2900, range_low: 2600, band_pct: 10.9, range_age_at_reg: 83, if_target: 3200, last_close: 2740,
+        metrics_at_reg: { score: 44.1, pos: 47, vol_ratio: 0.97, bbw_pctile: 35, atr_ratio: 1.01 } },
+    ],
+    // 台本: SPEC.md §5 の状態機械（watch_start → near → breakout → target_hit / back_below、dropped、週次 new）を 12 営業日で一巡
+    script: {
+      '2026-09-01': [{ type: 'watch_start' }],
+      '2026-09-02': [{ type: 'near', code: '7011.T', close: 2822 }],
+      '2026-09-03': [{ type: 'breakout', code: '7011.T', close: 2969, detail: { gain_pct: 4.2, vol_x: 1.8, months_high: 8 } }],
+      '2026-09-07': [
+        { type: 'new', code: '4063.T', name: '信越化学工業', registered: '2026-09-07', range_high: 5200, range_low: 4650, band_pct: 11.2, range_age_at_reg: 69, if_target: 5750, last_close: 5050,
+          metrics_at_reg: { score: 58.4, pos: 73, vol_ratio: 0.74, bbw_pctile: 15, atr_ratio: 0.83 } },
+        { type: 'dropped', code: '285A.T', close: 3045 },
+      ],
+      '2026-09-09': [{ type: 'near', code: '8306.T', close: 1931 }],
+      '2026-09-10': [{ type: 'breakout', code: '8306.T', close: 1972, detail: { gain_pct: 2.2, vol_x: 1.1, months_high: 7 } }],
+      '2026-09-11': [{ type: 'target_hit', code: '7011.T', close: 3190 }],
+      '2026-09-14': [{ type: 'back_below', code: '8306.T', close: 1938 }],
+    },
+  };
+
+  async function loadData() {
+    // Phase 2:
+    //   const state  = await (await fetch('../data/state.json')).json();
+    //   const events = await (await fetch('../data/events.json')).json();
+    //   return { stocks: Object.entries(state.watching).map(([code, s]) => ({ code, ...s })), events };
+    return MOCK;
+  }
+
+  // ==========================================================================
+  // 2. 表示用の定数・小道具
+  // ==========================================================================
+  const LABEL = { watching: '監視中', near: '接近', breakout: 'ブレイク', target_hit: '目標到達', back_below: 'ブレイク失敗', dropped: '解除' };
+  const COLOR = { watch_start: '#9ca3af', new: '#9ca3af', near: '#f2b705', breakout: '#22a06b', target_hit: '#2f6fed', back_below: '#e04f5f', dropped: '#e04f5f', watching: '#1f4e79' };
+  const ORDER = { near: 0, breakout: 1, target_hit: 2, watching: 3, back_below: 4, dropped: 5 };
+  const $ = (sel) => document.querySelector(sel);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
+  const pct = (from, to) => { const v = (to / from - 1) * 100; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%'; };
+  const sign = (v) => (v >= 0 ? '+' : '') + v;
+  const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; // toISOString は UTC になるので使わない
+  const jpDate = (iso) => { const d = new Date(iso + 'T00:00:00'); return `${iso}（${'日月火水木金土'[d.getDay()]}）`; };
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+  const escapeHTML = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function businessDays(startISO, n) {
+    const out = [];
+    const d = new Date(startISO + 'T00:00:00');
+    while (out.length < n) {
+      const w = d.getDay();
+      if (w !== 0 && w !== 6) out.push(isoDate(d));
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+
+  // 決定的な乱数（銘柄コードから種を作る）→ リロードしても同じスパークラインになる
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const seedOf = (code) => { let h = 7; for (const ch of code) h = (h * 31 + ch.charCodeAt(0)) | 0; return h; };
+
+  // ==========================================================================
+  // 3. シミュレーション（「翌日へ進む」デモ専用。Phase 2 で削除する）
+  // ==========================================================================
+  const sim = { dates: [], day: 0, stocks: [], events: [], selectedCode: null, selectedDate: null };
+
+  function makeStock(def) {
+    const rnd = mulberry32(seedOf(def.code));
+    const mid = (def.range_high + def.range_low) / 2;
+    const h = def.range_high - def.range_low;
+    const prices = [];
+    let p = mid + (rnd() - 0.5) * h * 0.6;
+    for (let i = 0; i < 59; i++) {
+      p += (mid - p) * 0.08 + (rnd() - 0.5) * h * 0.25;
+      p = Math.min(def.range_high - h * 0.02, Math.max(def.range_low + h * 0.02, p));
+      prices.push(p);
+    }
+    prices.push(def.last_close);
+    return { ...def, status: 'watching', prices, rnd, archived: false };
+  }
+
+  // 台本に無い日の値動き: 状態ごとの帯の中で、中心に引き戻されるランダムウォーク
+  function stepPrice(s) {
+    const h = s.range_high - s.range_low;
+    const prev = s.prices[s.prices.length - 1];
+    let lo = s.range_low + h * 0.02, hi = s.range_high - h * 0.01;
+    if (s.status === 'near') { lo = s.range_high * (1 - 0.015); hi = s.range_high; }
+    else if (s.status === 'breakout') { lo = s.range_high + h * 0.02; hi = s.if_target - h * 0.05; }
+    else if (s.status === 'target_hit') { lo = s.if_target; hi = s.if_target * 1.04; }
+    else if (s.status === 'back_below') { lo = s.range_high - h * 0.3; hi = s.range_high - 1; }
+    else if (s.status === 'dropped') { lo = s.range_low * 0.93; hi = s.range_low - 1; }
+    const pull = (lo + hi) / 2;
+    const p = prev + (pull - prev) * 0.15 + (s.rnd() - 0.5) * h * 0.2;
+    return Math.min(hi, Math.max(lo, p));
+  }
+
+  function eventOf(date, type, s, extra) {
+    return {
+      id: `${date}-${s.code}-${type}`, date, type, code: s.code, name: s.name,
+      range: { high: s.range_high, low: s.range_low, age: s.range_age_at_reg },
+      metrics_at_reg: s.metrics_at_reg, if_target: s.if_target, registered: s.registered,
+      ...extra,
+    };
+  }
+
+  function applyDay(date) {
+    const todays = MOCK.script[date] || [];
+    const newEvents = [];
+
+    // 週次スキャンで追加された銘柄（new）
+    todays.filter((e) => e.type === 'new').forEach((e) => {
+      if (sim.stocks.some((s) => s.code === e.code)) return;
+      const s = makeStock(e);
+      sim.stocks = [...sim.stocks, s];
+      newEvents.push(eventOf(date, 'new', s, { close: s.last_close }));
+    });
+    // 初回一括の監視開始（watch_start）
+    if (todays.some((e) => e.type === 'watch_start')) {
+      newEvents.push({ id: `${date}-all-watch_start`, date, type: 'watch_start', codes: sim.stocks.map((s) => s.code) });
+    }
+
+    const byCode = new Map(todays.filter((e) => e.code && e.type !== 'new').map((e) => [e.code, e]));
+    sim.stocks = sim.stocks.map((s) => {
+      if (todays.some((e) => e.type === 'new' && e.code === s.code)) return s; // 今日追加した銘柄は今日の終値を持っている
+      const ev = byCode.get(s.code);
+      if (!ev) return { ...s, prices: [...s.prices, stepPrice(s)] };
+      newEvents.push(eventOf(date, ev.type, s, { close: ev.close, detail: ev.detail || {} }));
+      return { ...s, status: ev.type, archived: ev.type === 'dropped', prices: [...s.prices, ev.close] };
+    });
+
+    sim.events = [...sim.events, ...newEvents];
+  }
+
+  // ==========================================================================
+  // 4. 文言（通知・日記で共用）
+  // ==========================================================================
+  function eventText(e) {
+    const stockOf = (code) => sim.stocks.find((s) => s.code === code);
+    switch (e.type) {
+      case 'watch_start': {
+        const lines = e.codes.map((c) => { const s = stockOf(c); return `・${c} ${s.name}  箱 ${fmt(s.range_low)}–${fmt(s.range_high)}（幅${s.band_pct}%・${s.range_age_at_reg}日）`; });
+        return `👀 監視を開始しました（${e.codes.length}銘柄）\n${lines.join('\n')}\nイベントが起きた日だけ通知します。`;
+      }
+      case 'new':
+        return `👀 週次スキャンで追加: ${e.code} ${e.name}\n箱 ${fmt(e.range.low)}–${fmt(e.range.high)}（${e.range.age}日）→ IF目標 ${fmt(e.if_target)} ／ score ${e.metrics_at_reg.score}`;
+      case 'near':
+        return `🔔 ${e.code} ${e.name} が箱の上限に接近\n終値 ${fmt(e.close)}（上限 ${fmt(e.range.high)} まで ${pct(e.close, e.range.high)}）`;
+      case 'breakout':
+        return `🚀 ブレイクアウト！ ${e.code} ${e.name}\n終値 ${fmt(e.close)}（${sign(e.detail.gain_pct)}%）／ ${e.detail.months_high}ヶ月ぶり高値 ／ 出来高 ${e.detail.vol_x}x（記録のみ）\n箱 ${fmt(e.range.low)}–${fmt(e.range.high)}（${e.range.age}日）→ IF目標 ${fmt(e.if_target)}（${pct(e.close, e.if_target)}）\n⏳ 登録から ${daysBetween(e.registered, e.date)}日目の通知`;
+      case 'dropped':
+        return `💤 ${e.code} ${e.name} 監視解除\n終値 ${fmt(e.close)} < 下限 ${fmt(e.range.low)}。箱を割れたので archived へ（履歴は残す）`;
+      case 'target_hit':
+        return `🎯 IF目標到達 ${e.code} ${e.name}\n終値 ${fmt(e.close)} ≥ 目標 ${fmt(e.if_target)}（登録から ${daysBetween(e.registered, e.date)}日）`;
+      case 'back_below':
+        return `↩️ ブレイク失敗 ${e.code} ${e.name}\n終値 ${fmt(e.close)} < 上限 ${fmt(e.range.high)}。箱に戻った（検証データとして記録）`;
+      default:
+        return `${e.type} ${e.code || ''}`;
+    }
+  }
+
+  // ==========================================================================
+  // 5. 描画
+  // ==========================================================================
+  function sparkline(s) {
+    const W = 150, H = 64, P = 4;
+    const ps = s.prices.slice(-70);
+    const lo = Math.min(s.range_low, ...ps) * 0.985;
+    const hi = Math.max(s.if_target, ...ps) * 1.01;
+    const x = (i) => P + (i / (ps.length - 1)) * (W - P * 2);
+    const y = (v) => H - P - ((v - lo) / (hi - lo)) * (H - P * 2);
+    const path = ps.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const color = COLOR[s.status] || COLOR.watching;
+    const last = ps[ps.length - 1];
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${s.code} スパークライン">
+      <rect x="0" y="${y(s.range_high).toFixed(1)}" width="${W}" height="${(y(s.range_low) - y(s.range_high)).toFixed(1)}" fill="#f2b705" fill-opacity=".18"/>
+      <line x1="0" x2="${W}" y1="${y(s.range_high).toFixed(1)}" y2="${y(s.range_high).toFixed(1)}" stroke="#c98a00" stroke-width="1" vector-effect="non-scaling-stroke"/>
+      <line x1="0" x2="${W}" y1="${y(s.range_low).toFixed(1)}" y2="${y(s.range_low).toFixed(1)}" stroke="#c98a00" stroke-width="1" vector-effect="non-scaling-stroke"/>
+      <line x1="0" x2="${W}" y1="${y(s.if_target).toFixed(1)}" y2="${y(s.if_target).toFixed(1)}" stroke="#2e8b57" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+      <circle cx="${x(ps.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="2.5" fill="${color}"/>
+    </svg>`;
+  }
+
+  function cardHTML(s, today) {
+    const last = s.prices[s.prices.length - 1];
+    const cls = ['stock', s.archived ? 'archived' : '', s.code === sim.selectedCode ? 'selected' : ''].join(' ');
+    return `<div class="${cls}" data-code="${s.code}">
+      <div>
+        <div class="head"><span class="code">${escapeHTML(s.code)}</span><span class="name">${escapeHTML(s.name)}</span><span class="badge ${s.status}">${LABEL[s.status]}</span></div>
+        <div class="kv"><span>終値 <b>${fmt(last)}</b></span><span>箱 <b>${fmt(s.range_low)}–${fmt(s.range_high)}</b>（${s.band_pct}%）</span><span>IF <b>${fmt(s.if_target)}</b></span><span>score <b>${s.metrics_at_reg.score}</b></span></div>
+        <div class="wait">登録 ${s.registered} から ${daysBetween(s.registered, today)}日目 ／ 登録時点で ${s.range_age_at_reg}日継続</div>
+      </div>
+      ${sparkline(s)}
+    </div>`;
+  }
+
+  function renderWatchlist() {
+    const today = sim.dates[sim.day];
+    const stocks = [...sim.stocks].sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || (b.metrics_at_reg.score - a.metrics_at_reg.score));
+    const el = $('#watchlist');
+    el.innerHTML = stocks.map((s) => cardHTML(s, today)).join('');
+    $('#watchCount').textContent = `${sim.stocks.filter((s) => !s.archived).length}銘柄を監視中`;
+    el.querySelectorAll('.stock').forEach((n) => n.addEventListener('click', () => {
+      sim.selectedCode = sim.selectedCode === n.dataset.code ? null : n.dataset.code;
+      render();
+    }));
+  }
+
+  function renderCalendar() {
+    const cur = sim.dates[sim.day];
+    const [Y, M] = cur.split('-').map(Number);
+    $('#calTitle').textContent = `${Y}年${M}月`;
+    const first = new Date(Y, M - 1, 1).getDay();
+    const days = new Date(Y, M, 0).getDate();
+    const byDate = new Map();
+    sim.events.forEach((e) => byDate.set(e.date, [...(byDate.get(e.date) || []), e]));
+    const cells = ['日', '月', '火', '水', '木', '金', '土'].map((d) => `<div class="dow">${d}</div>`);
+    for (let i = 0; i < first; i++) cells.push('<div class="day empty"></div>');
+    for (let d = 1; d <= days; d++) {
+      const date = `${Y}-${pad(M)}-${pad(d)}`;
+      const w = new Date(Y, M - 1, d).getDay();
+      const cls = ['day'];
+      if (w === 0 || w === 6) cls.push('weekend');
+      if (date > cur) cls.push('future');
+      if (date === cur) cls.push('today');
+      if (date === (sim.selectedDate || cur)) cls.push('selected');
+      const types = [...new Set((byDate.get(date) || []).map((e) => e.type))];
+      let inner = '';
+      if (types.length) inner = `<div class="dots">${types.map((t) => `<span class="dot" style="background:${COLOR[t]}"></span>`).join('')}</div>`;
+      else if (!cls.includes('weekend') && !cls.includes('future') && date >= MOCK.start) inner = '<div class="quiet"></div>'; // 静かな日はイベント無しから導出
+      cells.push(`<div class="${cls.join(' ')}" data-date="${date}">${d}${inner}</div>`);
+    }
+    const el = $('#calendar');
+    el.innerHTML = cells.join('');
+    el.querySelectorAll('.day:not(.empty):not(.future)').forEach((n) => n.addEventListener('click', () => { sim.selectedDate = n.dataset.date; render(); }));
+  }
+
+  function renderChat() {
+    const el = $('#chat');
+    if (!sim.events.length) {
+      el.innerHTML = '<div class="empty">まだ通知はありません。<br>「翌日へ進む」で 1 日ずつ進めてみてください。</div>';
+      return;
+    }
+    let html = '', lastDate = '';
+    for (const e of sim.events) {
+      if (e.date !== lastDate) { html += `<div class="sep">${jpDate(e.date)}</div>`; lastDate = e.date; }
+      const link = e.code ? `<a data-code="${e.code}">📈 ${e.code} を見る</a>` : '';
+      html += `<div class="msg ${e.type}">${escapeHTML(eventText(e))}<div class="t"><span class="time">18:30</span>${link}</div></div>`;
+    }
+    el.innerHTML = html;
+    el.scrollTop = el.scrollHeight;
+    el.querySelectorAll('a[data-code]').forEach((a) => a.addEventListener('click', () => {
+      sim.selectedCode = a.dataset.code;
+      render();
+      const card = document.querySelector(`.stock[data-code="${a.dataset.code}"]`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+  }
+
+  // 日記メモはこの端末のブラウザにだけ保存（localStorage は使えない環境もあるので必ず try/catch）
+  const noteKey = (date) => `sbd.diary.${date}`;
+  function loadNote(date) { try { return localStorage.getItem(noteKey(date)) || ''; } catch (_) { return ''; } }
+  function saveNote(date, text) { try { if (text) localStorage.setItem(noteKey(date), text); else localStorage.removeItem(noteKey(date)); } catch (_) { /* 保存できない環境では諦める */ } }
+
+  function renderDiary() {
+    const date = sim.selectedDate || sim.dates[sim.day];
+    $('#diaryDate').textContent = jpDate(date);
+    const evs = sim.events.filter((e) => e.date === date);
+    const watching = sim.stocks.filter((s) => !s.archived);
+    let auto = evs.length
+      ? evs.map((e) => '・' + eventText(e).split('\n')[0]).join('\n')
+      : `静かな日。${watching.length}銘柄を監視中（イベントなし）。待った日数がそのまま通知の価値になる。`;
+    const s = sim.stocks.find((x) => x.code === sim.selectedCode);
+    if (s) {
+      auto += `\n\n📈 ${s.code} ${s.name}（${LABEL[s.status]}）終値 ${fmt(s.prices[s.prices.length - 1])} ／ 箱 ${fmt(s.range_low)}–${fmt(s.range_high)} ／ IF ${fmt(s.if_target)} ／ 登録から ${daysBetween(s.registered, date)}日目`
+        + `\n登録時の指標: score ${s.metrics_at_reg.score} / pos ${s.metrics_at_reg.pos} / vol_ratio ${s.metrics_at_reg.vol_ratio} / bbw_pctile ${s.metrics_at_reg.bbw_pctile} / atr_ratio ${s.metrics_at_reg.atr_ratio}`;
+    }
+    $('#diaryAuto').textContent = auto;
+    const ta = $('#diaryText');
+    ta.value = loadNote(date);
+    ta.oninput = () => saveNote(date, ta.value);
+  }
+
+  function render() {
+    const cur = sim.dates[sim.day];
+    $('#today').textContent = `${jpDate(cur)}  ${sim.day + 1}日目 / ${sim.dates.length}日`;
+    $('#btnNext').disabled = sim.day >= sim.dates.length - 1;
+    $('#btnNext').textContent = sim.day >= sim.dates.length - 1 ? 'デモ終了（最初からで再生）' : '翌日へ進む ▶';
+    renderWatchlist();
+    renderCalendar();
+    renderChat();
+    renderDiary();
+  }
+
+  // ==========================================================================
+  // 6. 起動
+  // ==========================================================================
+  function reset(data) {
+    sim.dates = businessDays(data.start, data.days);
+    sim.day = 0;
+    sim.stocks = data.stocks.map(makeStock);
+    sim.events = [];
+    sim.selectedCode = null;
+    sim.selectedDate = null;
+    applyDay(sim.dates[0]);
+    render();
+  }
+
+  $('#btnNext').addEventListener('click', () => {
+    if (sim.day >= sim.dates.length - 1) return;
+    sim.day += 1;
+    sim.selectedDate = null;
+    applyDay(sim.dates[sim.day]);
+    render();
+  });
+  $('#btnReset').addEventListener('click', () => loadData().then(reset));
+
+  loadData().then(reset);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+# push / PR のたびに --demo（合成データ自己テスト）と台本テスト（pytest）を回す
+# これが緑 = レンジ検出とイベント状態機械が壊れていない
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Tokyo
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 依存をインストール（開発用込み）
+        run: pip install -r requirements-dev.txt
+
+      - name: 自己テスト（RANGE_GOOD のみ検出で合格）
+        run: python engine/range_scanner.py --demo --out out/demo --json out/demo/result.json
+
+      - name: 台本テスト（SPEC.md §6 Phase 1 の受け入れ条件）
+        run: pytest -q tests
+
+      - name: デモ出力を保存（IF チャートの見た目確認用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-${{ github.run_id }}
+          path: out/demo/
+          if-no-files-found: ignore
+          retention-days: 7

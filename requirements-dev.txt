@@ -1,0 +1,3 @@
+# 開発・CI 用（本番ジョブは requirements.txt だけで動く）
+-r requirements.txt
+pytest>=8

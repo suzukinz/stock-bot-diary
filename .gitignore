@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# ローカル専用（秘密情報は環境変数 / GitHub Secrets で渡す。ここには置かない）
+.env
+*.local.json
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ローカルでの動作確認出力（data/ 本体はボットがコミットするので ignore しない）
+out/
