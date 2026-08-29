@@ -1,0 +1,28 @@
+[
+  {
+    "id": "2026-08-28-8058.T-watch_start",
+    "date": "2026-08-28",
+    "type": "watch_start",
+    "code": "8058.T",
+    "name": "三菱商事",
+    "close": 4786,
+    "detail": {
+      "band_pct": 15.4,
+      "pos": 70,
+      "vol_x": 0.92
+    },
+    "range": {
+      "high": 4999,
+      "low": 4286,
+      "age": 63
+    },
+    "metrics_at_reg": {
+      "score": 72.4,
+      "pos": 70,
+      "vol_ratio": 0.89,
+      "bbw_pctile": 2,
+      "atr_ratio": 0.79
+    },
+    "if_target": 5712
+  }
+]

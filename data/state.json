@@ -1,0 +1,25 @@
+{
+  "updated": "2026-08-30",
+  "watching": {
+    "8058.T": {
+      "name": "三菱商事",
+      "status": "watching",
+      "registered": "2026-08-28",
+      "range_high": 4999,
+      "range_low": 4286,
+      "band_pct": 15.4,
+      "range_age_at_reg": 63,
+      "if_target": 5712,
+      "metrics_at_reg": {
+        "score": 72.4,
+        "pos": 70,
+        "vol_ratio": 0.89,
+        "bbw_pctile": 2,
+        "atr_ratio": 0.79
+      },
+      "last_close": 4786,
+      "last_checked": "2026-08-28"
+    }
+  },
+  "archived": {}
+}
