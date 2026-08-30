@@ -112,3 +112,10 @@
 - GitHub Actionsのcronは数分〜数十分遅延しうる。60日間コミットが無いとスケジュール停止。
 - pandas 3系の `bdate_range` は終端が休日だと期待より1日短い（`periods+5`して末尾スライスで回避済み。同種の暦バグに注意）。
 - タイムゾーンは常にJST。日付キーは `YYYY-MM-DD`。
+
+## 9. 運用上の決定（時系列で追記する）
+
+- **2026-08-30**: Phase 0・1 を実装し GitHub（`suzukinz/stock-bot-diary`）へ。CI 緑。初回スキャンで 8058.T 三菱商事を登録（ボットが `data/` を自分でコミット）。
+- **2026-08-31 通知は使わない**: Discord 未設定のまま運用する（リアルタイム性は不要という判断）。通知層は `notify_discord()` に隔離してあり、`DISCORD_WEBHOOK_URL` を Secrets に入れれば翌日から復活する。画面（Phase 2）がこのボットの唯一の窓。
+- **2026-08-31 リポジトリを public に変更**: 無料プランの GitHub Pages は public 限定のため。リポジトリに秘密情報は無く、日記の手書きメモは端末の localStorage にのみ保存される（公開されない）。Pages は `main` のルートから配信（`.nojekyll`）: https://suzukinz.github.io/stock-bot-diary/
+- **Phase 2 の画面**はスパークラインではなく「箱ゲージ」（下限〜上限〜IF目標と終値の位置）＋ボット生成の IF チャート PNG を使う。価格履歴はデータ契約に無く、契約は変えない。
