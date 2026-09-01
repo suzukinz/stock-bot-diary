@@ -24,5 +24,30 @@
       "atr_ratio": 0.79
     },
     "if_target": 5712
+  },
+  {
+    "id": "2026-09-01-8058.T-near",
+    "date": "2026-09-01",
+    "type": "near",
+    "code": "8058.T",
+    "name": "三菱商事",
+    "close": 4956,
+    "detail": {
+      "gap_pct": -0.9,
+      "vol_x": 1.16
+    },
+    "range": {
+      "high": 4999,
+      "low": 4286,
+      "age": 63
+    },
+    "metrics_at_reg": {
+      "score": 72.4,
+      "pos": 70,
+      "vol_ratio": 0.89,
+      "bbw_pctile": 2,
+      "atr_ratio": 0.79
+    },
+    "if_target": 5712
   }
 ]

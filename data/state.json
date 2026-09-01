@@ -3,7 +3,7 @@
   "watching": {
     "8058.T": {
       "name": "三菱商事",
-      "status": "watching",
+      "status": "near",
       "registered": "2026-08-28",
       "range_high": 4999,
       "range_low": 4286,
@@ -17,8 +17,8 @@
         "bbw_pctile": 2,
         "atr_ratio": 0.79
       },
-      "last_close": 4786,
-      "last_checked": "2026-08-28"
+      "last_close": 4956,
+      "last_checked": "2026-09-01"
     }
   },
   "archived": {}
