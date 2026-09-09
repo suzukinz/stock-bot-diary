@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-08",
+  "updated": "2026-09-09",
   "watching": {
     "8058.T": {
       "name": "三菱商事",
@@ -17,8 +17,8 @@
         "bbw_pctile": 2,
         "atr_ratio": 0.79
       },
-      "last_close": 4927,
-      "last_checked": "2026-09-08"
+      "last_close": 5038,
+      "last_checked": "2026-09-09"
     }
   },
   "archived": {}
